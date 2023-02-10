@@ -1,0 +1,62 @@
+---
+title: "scRNA_seq_CountsPerGene_and_PercentExpressed"
+output: html_document
+date: "2023-02-06"
+---
+
+# Counts per gene and percent expressed
+
+## What does this script do?
+
+Here, my goal is to go from either an .rds file, or an .h5 file of single-cell Perturb-seq data, then using the transcriptomic reads, generate a csv with the number of read counts per gene, as well as a csv with the percentage of cells that expressed that gene.
+
+First let's load our libraries, and specify our desired file paths.
+
+```{r}
+
+library('Seurat')
+library('readr')
+library('scCustomize')
+library('ggplot2')
+
+# Specify path to the input .rds file.
+rds_filepath <- file.path('/Volumes','berger_a-1','SR','ngs','illumina','ahberger','220826_VH00699_191_AAAT5V2HV','Analysis','Seurat', 'clustering.rds')
+
+# Specify path to the inpt .csv file.
+csv_filepath <- file.path('/Volumes','berger_a','BergerLabShared','ethieme','Perturb_seq','2022_10_07_scRNAseq_HeLa','input_data','110_lib_gene_names.csv')
+
+# Specify path to the output .tsv file. In the last entry, write the desired file name.
+output_filepath <- file.path('/Volumes','berger_a','BergerLabShared','ethieme','Perturb_seq','2022_10_07_scRNAseq_HeLa','output_data', 'gene_sums_fromh5_PC9.tsv')
+
+```
+
+Read in the .rds file (this will take some time)
+
+```{r}
+obj <- readRDS(rds_filepath)
+```
+
+This is an alternative path, starting not with a .rds file, but with a .h5 file that we will initialize and convert into a seurat object.
+
+```{r}
+paralogues.sparse.m <- Read10X_h5(filename = '/Volumes/berger_a-1/SR/ngs/illumina/ahberger/220826_VH00699_191_AAAT5V2HV/Analysis/PC9_final/filtered_feature_bc_matrix.h5')
+
+transcriptome_cts <- paralogues.sparse.m$`Gene Expression`
+
+paralogues.seurat.obj <- CreateSeuratObject(counts = transcriptome_cts, project = 'Perturb_pilot', min.cells = 5, min.features = 200)
+```
+
+Generate a csv file containing the sum of all counts per gene
+
+```{r}
+gene.sums <- rowSums(GetAssayData(paralogues.seurat.obj, assay="RNA", slot="counts")) # sum the RNA counts/gene
+write.csv(gene.sums, output_filepath)
+```
+
+Use the Percent_Expressing function of scCustomize to calculate the percent of cells expressing a specified gene ([https://samuel-marsh.github.io/scCustomize/reference/Percent_Expressing.html)](https://samuel-marsh.github.io/scCustomize/reference/Percent_Expressing.html)). Genes of interest should be in a tidy csv list.
+
+```{r}
+cv <- readLines(csv_filepath) # turn your list of genes into a character vector
+percent <- Percent_Expressing(seurat_object = obj, entire_object = T, features = cv)
+write.csv(percent, output_filepath)
+```

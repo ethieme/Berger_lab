@@ -1,0 +1,69 @@
+---
+title: "RNAFoldChange_by_barcode"
+output: html_document
+date: "2023-01-31"
+---
+
+# RNA fold change by barcode
+
+## What does this script do?
+
+This code will take a .csv of cell barcodes indexed by gene, and search for those barcodes within an .rds file of single-cell RNA-seq data, then output a tsv with the fold change and p-value of transcripts grouped by index (ie. comparing barcodes from cells indexed as CDKN1A vs NT). Note, this code does not search for the gene identity within the .rds file, it is only searching via the barcodes provided in the .csv.
+
+As an example, I have a list of barcodes indexed by single KO gRNA gene target (so: barcode H-kjebng198r3bka, CDKN1A) and I want to see fold change of cells with this single knockout vs. cells with nontargeting control. If you already have an analyzed .rds file generated using Seurat, you can load that and the .csv into this script, then simply enter in the index that you would like to compare (index_1. =CDKN1A, index_2 = nontargeting) and this script will tell you the fold change & p-value of the transcripts detected in CDKN1A vs NT.
+
+First let's load our libraries.
+
+```{r}
+library('tibble')
+library('Seurat')
+library('readr')
+library('ggplot2')
+
+# Double check that our packages have loaded
+(.packages())
+```
+
+Now lets specify our file paths, name our output file, and specify the two indexes that you want to compare.
+
+```{r}
+# Specify path to the inpt .csv file.
+csv_filepath <- file.path('/Volumes','berger_a','SR','ngs','illumina','ahberger','220826_VH00699_191_AAAT5V2HV','Analysis','GuidesPerCell','GuidesPerCell_compressed_by_gene.csv')
+
+# Specify path to the input .rds file.
+rds_filepath <- file.path('/Volumes','berger_a','SR','ngs','illumina','ahberger','220826_VH00699_191_AAAT5V2HV','Analysis','Seurat', 'clustering.rds')
+
+# Specify path to the output .tsv file. In the last entry, write the desired file name.
+output_filepath <- file.path('/Volumes','berger_a-1','BergerLabShared','ethieme','Perturb_seq','2022_10_07_scRNAseq_HeLa','output_data', '2022_10_07_FAM47A.tsv')
+
+# Specify the two indexes you want to compare
+index_1 <- 'FAM47A'
+index_2 <- 'nontargeting'
+```
+
+Read in the csv as a dataframe, and convert the 'barcode' column into the row name.
+
+```{r}
+df <- data.frame(read_csv(csv_filepath, col_names=T))
+rownames(df) <- df$barcode
+```
+
+Read in the .rds file, intersect it with the dataframe, then do some ignore wizardry that Harini came up with and I don't really understand.
+
+```{r}
+obj <- readRDS(rds_filepath)
+temp <- intersect(rownames(obj@meta.data),df$barcode)
+df <- df[temp,]
+obj@meta.data$KO_status <- "Ignore"
+obj@meta.data[df$barcode,"KO_status"] <- df$gene_singleKO
+```
+
+Now make the comparison between index 1 and 2 in the transcriptomic RNA, turn the rownames to columns, and write your tsv.
+
+```{r}
+Idents(obj) <- "KO_status"
+DefaultAssay(obj) <- "RNA"
+fm <- FindMarkers(obj, ident.1 = index_1, ident.2 = index_2, min.pct=0.25)
+fm <- rownames_to_column(fm,var="gene")
+write_tsv(fm, output_filepath, col_names=T)
+```
